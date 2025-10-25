@@ -32,6 +32,7 @@ model Watchlist {
     id          Int     @id @default(autoincrement())
   userId      String
   tmdbId      Int
+  mediaType   String 
   addedAt     DateTime @default(now())
 
   user        User    @relation(fields: [userId], references: [id])

@@ -33,14 +33,33 @@ function Home() {
     }
   };
 
-  const handleAddToWatchlist = async (item) => {
-    const tmdbId = item.tmdbId || item.id;
-    await fetch(`${baseUrl}/api/watchlist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ tmdbId }),
-    });
+const handleAddToWatchlist = async (item) => {
+  const tmdbId = item.tmdbId || item.id;
+  const mediaType =
+    item.mediaType ||
+    item.media_type ||
+    (item.first_air_date ? 'tv' : item.release_date ? 'movie' : null);
+
+  if (!tmdbId || !mediaType) {
+    console.error('Missing tmdbId or mediaType for watchlist item:', item);
+    return;
+  }
+
+  await fetch(`${baseUrl}/api/watchlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ tmdbId, mediaType }),
+  });
+};
+
+
+
+  const guessMediaType = (item) => {
+    if (item.mediaType || item.media_type) return item.mediaType || item.media_type;
+    if (item.first_air_date) return 'tv';
+    if (item.release_date) return 'movie';
+    return null;
   };
 
   const handleShowDetails = async (tmdbId, mediaType) => {
@@ -102,7 +121,7 @@ function Home() {
               />
               <p>{item.title || item.name}</p>
               <button
-                onClick={() => handleShowDetails(item.tmdbId || item.id, item.mediaType || item.media_type)}
+                onClick={() => handleShowDetails(item.tmdbId || item.id, guessMediaType(item))}
                 style={styles.details}
               >
                 Details
@@ -235,7 +254,7 @@ const styles = {
     zIndex: 1000,
   },
   modalContent: {
-    background: '#0d1b2a', // ✅ Match app background
+    background: '#0d1b2a',
     color: '#fff',
     padding: '2rem',
     borderRadius: '8px',

@@ -3,7 +3,6 @@ import { PrismaClient } from '@prisma/client';
 import authenticateToken from '../middleware/authMiddleware.js';
 import axios from 'axios';
 
-
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -13,11 +12,16 @@ router.get('/', authenticateToken, async (req, res) => {
     const items = await prisma.watchlist.findMany({
       where: { userId: req.user.id },
       orderBy: { addedAt: 'desc' },
+      select: {
+        tmdbId: true,
+        mediaType: true,
+        addedAt: true,
+      },
     });
 
     const tmdbResponses = await Promise.all(
       items.map((item) =>
-        axios.get(`https://api.themoviedb.org/3/movie/${item.tmdbId}`, {
+        axios.get(`https://api.themoviedb.org/3/${item.mediaType}/${item.tmdbId}`, {
           params: { api_key: process.env.TMDB_API_KEY },
         })
       )
@@ -25,6 +29,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
     const enrichedItems = tmdbResponses.map((response, index) => ({
       ...response.data,
+      mediaType: items[index].mediaType,
       addedAt: items[index].addedAt,
     }));
 
@@ -37,10 +42,10 @@ router.get('/', authenticateToken, async (req, res) => {
 
 // POST /api/watchlist — add item to watchlist
 router.post('/', authenticateToken, async (req, res) => {
-  const { tmdbId } = req.body;
+  const { tmdbId, mediaType } = req.body;
 
-  if (!tmdbId) {
-    return res.status(400).json({ error: 'Missing tmdbId' });
+  if (!tmdbId || !mediaType) {
+    return res.status(400).json({ error: 'Missing tmdbId or mediaType' });
   }
 
   try {
@@ -55,6 +60,7 @@ router.post('/', authenticateToken, async (req, res) => {
       create: {
         userId: req.user.id,
         tmdbId,
+        mediaType,
       },
     });
     res.status(201).json(item);
