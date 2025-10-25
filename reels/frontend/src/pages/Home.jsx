@@ -1,9 +1,14 @@
 import { useState } from 'react';
 
+const baseUrl = import.meta.env.VITE_API_BASE_URL;
+const tmdbKey = import.meta.env.VITE_TMDB_API_KEY;
+
 function Home() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [error, setError] = useState('');
+  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [showModal, setShowModal] = useState(false);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -11,9 +16,8 @@ function Home() {
     setResults([]);
 
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/content/search?q=${encodeURIComponent(query)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(`${baseUrl}/api/content/search?q=${encodeURIComponent(query)}`, {
+        method: 'GET',
         credentials: 'include',
       });
 
@@ -30,16 +34,45 @@ function Home() {
   };
 
   const handleAddToWatchlist = async (item) => {
-    const token = localStorage.getItem('token');
-    await fetch('/api/watchlist', {
+    const tmdbId = item.tmdbId || item.id;
+    await fetch(`${baseUrl}/api/watchlist`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(item),
+      body: JSON.stringify({ tmdbId }),
     });
+  };
+
+  const handleShowDetails = async (tmdbId, mediaType) => {
+    if (!mediaType) {
+      console.error('Missing media type for TMDB item');
+      return;
+    }
+
+    try {
+      const [detailsRes, videosRes, providersRes] = await Promise.all([
+        fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${tmdbKey}`),
+        fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}/videos?api_key=${tmdbKey}`),
+        fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}/watch/providers?api_key=${tmdbKey}`),
+      ]);
+
+      const details = await detailsRes.json();
+      const videos = await videosRes.json();
+      const providers = await providersRes.json();
+
+      const trailer = videos.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+      const streaming = providers.results?.US?.flatrate ?? [];
+
+      setSelectedMovie({
+        ...details,
+        mediaType,
+        trailerUrl: trailer ? `https://www.youtube.com/embed/${trailer.key}` : null,
+        streaming,
+      });
+      setShowModal(true);
+    } catch (err) {
+      console.error('Failed to fetch movie details:', err);
+    }
   };
 
   return (
@@ -62,13 +95,61 @@ function Home() {
         <div style={styles.grid}>
           {results.map((item) => (
             <div key={item.id} style={styles.card}>
-              <img src={item.imageUrl} alt={item.title} style={styles.image} />
-              <p>{item.title}</p>
-              <button onClick={() => handleAddToWatchlist(item)} style={styles.add}>
+              <img
+                src={item.imageUrl || '/download.jpeg'}
+                alt={item.title || item.name}
+                style={styles.image}
+              />
+              <p>{item.title || item.name}</p>
+              <button
+                onClick={() => handleShowDetails(item.tmdbId || item.id, item.mediaType || item.media_type)}
+                style={styles.details}
+              >
+                Details
+              </button>
+              <button
+                onClick={() => handleAddToWatchlist(item)}
+                style={styles.add}
+              >
                 Add to Watchlist
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {showModal && selectedMovie && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h2>{selectedMovie.title} ({selectedMovie.mediaType === 'tv' ? 'TV Show' : 'Movie'})</h2>
+            <p>{selectedMovie.overview}</p>
+
+            {selectedMovie.trailerUrl && (
+              <iframe
+                width="100%"
+                height="315"
+                src={selectedMovie.trailerUrl}
+                title="Trailer"
+                frameBorder="0"
+                allowFullScreen
+              ></iframe>
+            )}
+
+            {selectedMovie.streaming.length > 0 ? (
+              <div>
+                <h4>Available on:</h4>
+                <ul>
+                  {selectedMovie.streaming.map((provider) => (
+                    <li key={provider.provider_id}>{provider.provider_name}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p>Not currently available to stream in the US.</p>
+            )}
+
+            <button onClick={() => setShowModal(false)} style={styles.close}>Close</button>
+          </div>
         </div>
       )}
     </div>
@@ -111,10 +192,15 @@ const styles = {
     marginTop: '1rem',
   },
   card: {
-    border: '1px solid #ccc',
+    backgroundColor: '#172a3bff',
+    border: '1px solid #2c3e50',
     padding: '1rem',
     borderRadius: '8px',
     transition: 'transform 0.2s ease',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    color: '#fff',
   },
   image: {
     width: '100%',
@@ -124,6 +210,42 @@ const styles = {
   add: {
     marginTop: '0.5rem',
     background: '#3498db',
+    color: '#fff',
+    border: 'none',
+    padding: '0.4rem 0.8rem',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
+  details: {
+    marginTop: '0.5rem',
+    background: '#2ecc71',
+    color: '#fff',
+    border: 'none',
+    padding: '0.4rem 0.8rem',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    background: '#0d1b2a', // ✅ Match app background
+    color: '#fff',
+    padding: '2rem',
+    borderRadius: '8px',
+    maxWidth: '600px',
+    width: '90%',
+    textAlign: 'left',
+  },
+  close: {
+    marginTop: '1rem',
+    background: '#e74c3c',
     color: '#fff',
     border: 'none',
     padding: '0.4rem 0.8rem',

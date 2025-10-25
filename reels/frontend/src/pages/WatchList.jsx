@@ -1,60 +1,61 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { fetchWatchlist } from '../redux/watchlistSlice';
 
 function Watchlist() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+    console.log('Watchlist component mounted');
 
-  const fetchWatchlist = () => {
-    const token = localStorage.getItem('token');
-    fetch('/api/watchlist', {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: 'include',
-    })
-      .then(res => res.json())
-      .then(data => {
-        setItems(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setItems([]);
-        setLoading(false);
-      });
-  };
+  const dispatch = useDispatch();
+  const { items, status } = useSelector((state) => state.watchlist);
 
   useEffect(() => {
-    fetchWatchlist();
-  }, []);
+    console.log('Dispatching fetchWatchlist');
+    dispatch(fetchWatchlist());
+  }, [dispatch]);
 
-  const handleDelete = async (id) => {
-    const token = localStorage.getItem('token');
-    await fetch(`/api/watchlist/${id}`, {
+  console.log('Watchlist status:', status);
+  console.log('Watchlist items:', items);
+
+  const handleRemove = async (tmdbId) => {
+  try {
+    await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/watchlist/${tmdbId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
       credentials: 'include',
     });
-    fetchWatchlist();
-  };
+    dispatch(fetchWatchlist()); // ✅ refresh the list
+  } catch (err) {
+    console.error('Failed to remove item:', err);
+  }
+};
+
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Your Watchlist</h1>
-      {loading ? (
-        <p>Loading...</p>
-      ) : items.length === 0 ? (
-        <p style={styles.empty}>No items on your watchlist</p>
-      ) : (
-        <div style={styles.grid}>
-          {items.map(item => (
-            <div key={item.id} style={styles.card}>
-              <div style={styles.imageWrapper}>
-                <img src={item.imageUrl} alt={item.title} style={styles.image} />
-              </div>
-              <p>{item.title}</p>
-              <button onClick={() => handleDelete(item.id)} style={styles.delete}>Remove</button>
-            </div>
-          ))}
-        </div>
+      <h2 style={styles.title}>My Watchlist</h2>
+
+      {status === 'loading' && <p style={styles.message}>Loading...</p>}
+      {status === 'failed' && <p style={styles.message}>Failed to load your watchlist.</p>}
+      {status === 'succeeded' && items.length === 0 && (
+        <p style={styles.message}>Your watchlist is empty. Start adding some favorites!</p>
       )}
+
+      {status === 'succeeded' && items.length > 0 && (
+  <div style={styles.grid}>
+    {items.map((item) => (
+     <div key={item.id || item.tmdbId} style={styles.card}>
+  <img
+    src={`https://image.tmdb.org/t/p/w300${item.poster_path}`}
+    alt={item.title}
+    style={styles.image}
+  />
+  <p>{item.title}</p>
+  <button onClick={() => handleRemove(item.id || item.tmdbId)} style={styles.remove}>
+    Remove
+  </button>
+</div>
+    ))}
+  </div>
+)}
     </div>
   );
 }
@@ -65,16 +66,17 @@ const styles = {
     textAlign: 'center',
   },
   title: {
-    fontSize: '2.5rem',
-    marginBottom: '2rem',
+    fontSize: '2rem',
+    marginBottom: '1rem',
   },
-  empty: {
-    fontSize: '1.2rem',
-    color: '#666',
+  message: {
+    fontSize: '1rem',
+    color: '#555',
+    marginTop: '1rem',
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
     gap: '1.5rem',
     marginTop: '1rem',
   },
@@ -82,27 +84,28 @@ const styles = {
     border: '1px solid #ccc',
     padding: '1rem',
     borderRadius: '8px',
-    transition: 'transform 0.2s ease',
-    cursor: 'pointer',
-  },
-  imageWrapper: {
-    overflow: 'hidden',
-    borderRadius: '4px',
+    backgroundColor: '#f9f9f9',
+    overflow: 'hidden', 
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
   },
   image: {
-    width: '100%',
+    width: '100%', 
     height: 'auto',
-    transition: 'transform 0.3s ease',
-  },
-  delete: {
-    marginTop: '0.5rem',
-    background: '#e74c3c',
-    color: '#fff',
-    border: 'none',
-    padding: '0.4rem 0.8rem',
+    maxWidth: '200px', 
     borderRadius: '4px',
-    cursor: 'pointer',
+    objectFit: 'cover',
   },
+  remove: {
+  marginTop: '0.5rem',
+  background: '#e74c3c',
+  color: '#fff',
+  border: 'none',
+  padding: '0.4rem 0.8rem',
+  borderRadius: '4px',
+  cursor: 'pointer',
+}
 };
 
-// Add hover
+export default Watchlist;
